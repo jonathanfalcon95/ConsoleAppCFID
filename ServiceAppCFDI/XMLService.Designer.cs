@@ -2,7 +2,7 @@
 
 namespace ServiceAppCFDI
 {
-    partial class MyNewService
+    partial class XMLService
     {
         /// <summary> 
         /// Variable del diseñador necesaria.
@@ -21,15 +21,13 @@ namespace ServiceAppCFDI
             }
             base.Dispose(disposing);
         }
-
         public void RunAsConsole(string[] args)
         {
             OnStart(args);
-            Console.WriteLine("Press any key to exit...");
+            Console.WriteLine("Press any key to exit xmlService...");
             Console.ReadLine();
             OnStop();
         }
-
         #region Código generado por el Diseñador de componentes
 
         /// <summary> 
@@ -39,7 +37,7 @@ namespace ServiceAppCFDI
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
-            this.ServiceName = "Service1";
+            this.ServiceName = "XMLService";
         }
 
         #endregion
