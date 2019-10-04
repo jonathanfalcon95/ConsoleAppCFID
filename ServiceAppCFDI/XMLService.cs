@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Renci.SshNet;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Configuration;
@@ -23,7 +24,7 @@ namespace ServiceAppCFDI
         {
             InitializeComponent();
         }
-
+        
         protected override void OnStart(string[] args)
         {
             WriteToFile("Service is started at " + DateTime.Now);
@@ -31,7 +32,9 @@ namespace ServiceAppCFDI
             timer.Elapsed += new ElapsedEventHandler(OnElapsedTime);
             timer.Interval = 5000; //number in milisecinds
             timer.Enabled = true;
-            CallXMLFile();
+            //CallXMLFile();
+            DownloadAll();
+
         }
 
         protected override void OnStop()
@@ -43,25 +46,20 @@ namespace ServiceAppCFDI
         private void OnElapsedTime(object source, ElapsedEventArgs e)
         {
             WriteToFile("Service is recall at " + DateTime.Now);
-            Console.WriteLine("service...call");
-
-
-
-
-
+            Console.WriteLine("service call....");
 
         }
 
-        public void CallXMLFile()
+        public void CallXMLFile(Stream sourceFile)
         {
             Console.WriteLine("xml read");
-            string sourceFile = @"D:/Download/modelxml/B-55238797_Ingresos_Nacional.xml";
+           // string sourceFile = @"C:/Users/usuario/Downloads/modelxml/B-55238797_Ingresos_Nacional.xml";
             XmlTextReader xmlreader = new XmlTextReader(sourceFile);
-            string xmlString = File.ReadAllText(sourceFile);
+            //string xmlString = File.ReadAllText(sourceFile);
             DataSet ds = new DataSet();
             ds.ReadXml(xmlreader);
             xmlreader.Close();
-            Console.WriteLine(xmlString);
+            //Console.WriteLine(xmlString);
             var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
             using (var sqlConn = new SqlConnection(connString))
             {
@@ -72,11 +70,46 @@ namespace ServiceAppCFDI
                     //sqlCommand.Parameters.Add(new SqlParameter("@cfdi", xmlString));
                     sqlCommand.Parameters.Add("@cfdi", SqlDbType.Xml).Value = ds.GetXml();
                     //sqlCommand.Parameters.AddWithValue("@cfdi", xmlString);
-                    sqlCommand.ExecuteNonQuery();
+                    int cont = sqlCommand.ExecuteNonQuery();
+                    Console.WriteLine("se insertaron "+cont+" registros");
+
                 }
             }
 
 
+        }
+
+        public void DownloadAll()
+        {
+            string host = @"57.77.28.25";
+            string username = "terra";
+            string password = "NJ5$nm369V";
+
+            string remoteDirectory = "/TerraMain/CFDI/";
+            string localDirectory = @"C:\Users\usuario\Downloads\modelxml\Nueva carpeta\";
+
+            using (var sftp = new SftpClient(host, username, password))
+            {
+                sftp.Connect();
+                var files = sftp.ListDirectory(remoteDirectory);
+
+                foreach (var file in files)
+                {
+                    string remoteFileName = file.Name;
+                    
+                    if ((!file.Name.StartsWith(".")) && (file.LastWriteTime.Date == DateTime.Today))
+
+                       // CallXMLFile(file);
+
+                    //using (Stream file1 = File.OpenWrite(localDirectory + remoteFileName))
+                    //    {
+                    //        Console.WriteLine("paso a guardar file1");
+                    //sftp.DownloadFile(remoteDirectory + remoteFileName, file1);
+                     //        CallXMLFile(file1);
+                    //    }
+                }
+
+            }
         }
         public void WriteToFile(string Message)
         {
