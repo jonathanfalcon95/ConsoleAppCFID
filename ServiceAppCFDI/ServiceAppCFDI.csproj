@@ -53,12 +53,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="MyNewService.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="MyNewService.Designer.cs">
-      <DependentUpon>MyNewService.cs</DependentUpon>
-    </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="ProjectInstaller.cs">
       <SubType>Component</SubType>

@@ -11,6 +11,7 @@ using System.ServiceProcess;
 using System.Text;
 using System.Threading.Tasks;
 using System.Timers;
+using System.Xml;
 
 namespace ServiceAppCFDI
 {
@@ -18,7 +19,7 @@ namespace ServiceAppCFDI
     {
 
         Timer timer = new Timer(); // name space(using System.Timers;)
-        public  XMLService()
+        public XMLService()
         {
             InitializeComponent();
         }
@@ -26,7 +27,7 @@ namespace ServiceAppCFDI
         protected override void OnStart(string[] args)
         {
             WriteToFile("Service is started at " + DateTime.Now);
-            Console.WriteLine("service...start"); 
+            Console.WriteLine("service...start");
             timer.Elapsed += new ElapsedEventHandler(OnElapsedTime);
             timer.Interval = 5000; //number in milisecinds
             timer.Enabled = true;
@@ -54,25 +55,27 @@ namespace ServiceAppCFDI
         public void CallXMLFile()
         {
             Console.WriteLine("xml read");
-            string sourceFile = @"C:/Users/usuario/Downloads/modelxml/B-55238797_Ingresos_Nacional2.xml";
-            //string[] files = Directory.GetFiles(sourceFile);
-            
+            string sourceFile = @"D:/Download/modelxml/B-55238797_Ingresos_Nacional.xml";
+            XmlTextReader xmlreader = new XmlTextReader(sourceFile);
             string xmlString = File.ReadAllText(sourceFile);
+            DataSet ds = new DataSet();
+            ds.ReadXml(xmlreader);
+            xmlreader.Close();
             Console.WriteLine(xmlString);
             var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
             using (var sqlConn = new SqlConnection(connString))
-                 {
-                       
-                  using (var sqlCommand = new SqlCommand("SaveXMLNotaDeCredito", sqlConn))
-                      {
-                                    sqlCommand.CommandType = System.Data.CommandType.StoredProcedure;
-                                    sqlCommand.Parameters.Add(new SqlParameter("@cfdi", xmlString));
+            {
+                sqlConn.Open();
+                using (var sqlCommand = new SqlCommand("SaveXMLNotaDeCredito", sqlConn))
+                {
+                    sqlCommand.CommandType = System.Data.CommandType.StoredProcedure;
+                    //sqlCommand.Parameters.Add(new SqlParameter("@cfdi", xmlString));
+                    sqlCommand.Parameters.Add("@cfdi", SqlDbType.Xml).Value = ds.GetXml();
                     //sqlCommand.Parameters.AddWithValue("@cfdi", xmlString);
-                    sqlConn.Open();
                     sqlCommand.ExecuteNonQuery();
-                      }
-                 }
-                     
+                }
+            }
+
 
         }
         public void WriteToFile(string Message)
@@ -102,5 +105,5 @@ namespace ServiceAppCFDI
     }
 
 
-    
+
 }
