@@ -24,7 +24,7 @@ namespace ServiceAppCFDI
         {
             InitializeComponent();
         }
-        
+
         protected override void OnStart(string[] args)
         {
             WriteToFile("Service is started at " + DateTime.Now);
@@ -33,7 +33,7 @@ namespace ServiceAppCFDI
             timer.Interval = 5000; //number in milisecinds
             timer.Enabled = true;
             //CallXMLFile();
-            DownloadAll();
+            GetXmlFiles();
 
         }
 
@@ -46,32 +46,34 @@ namespace ServiceAppCFDI
         private void OnElapsedTime(object source, ElapsedEventArgs e)
         {
             WriteToFile("Service is recall at " + DateTime.Now);
-            Console.WriteLine("service call....");
+            Console.WriteLine("windows service call every 5 seconds ");
 
         }
 
-        public void CallXMLFile(Stream sourceFile)
+        public void SaveXMLFile(XmlReader xmlreader)
         {
-            Console.WriteLine("xml read");
-           // string sourceFile = @"C:/Users/usuario/Downloads/modelxml/B-55238797_Ingresos_Nacional.xml";
-            XmlTextReader xmlreader = new XmlTextReader(sourceFile);
+            Console.WriteLine("xml save");
+            //code to read local xml files
+            //string sourceFile = @"C:/Users/usuario/Downloads/modelxml/B-55238797_Ingresos_Nacional.xml";
+            //XmlTextReader xmlreader = new XmlTextReader(sourceFile);
             //string xmlString = File.ReadAllText(sourceFile);
             DataSet ds = new DataSet();
             ds.ReadXml(xmlreader);
             xmlreader.Close();
-            //Console.WriteLine(xmlString);
+            string storedProcedureName = "SaveXMLNotaDeCredito";
             var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
             using (var sqlConn = new SqlConnection(connString))
             {
                 sqlConn.Open();
-                using (var sqlCommand = new SqlCommand("SaveXMLNotaDeCredito", sqlConn))
+                using (var sqlCommand = new SqlCommand(storedProcedureName, sqlConn))
                 {
                     sqlCommand.CommandType = System.Data.CommandType.StoredProcedure;
                     //sqlCommand.Parameters.Add(new SqlParameter("@cfdi", xmlString));
                     sqlCommand.Parameters.Add("@cfdi", SqlDbType.Xml).Value = ds.GetXml();
-                    //sqlCommand.Parameters.AddWithValue("@cfdi", xmlString);
+
                     int cont = sqlCommand.ExecuteNonQuery();
-                    Console.WriteLine("se insertaron "+cont+" registros");
+                    Console.WriteLine("Se ejecutaron " + cont + " Querys");
+
 
                 }
             }
@@ -79,34 +81,43 @@ namespace ServiceAppCFDI
 
         }
 
-        public void DownloadAll()
+        public void GetXmlFiles()
         {
+            //Console.WriteLine("xml download");
             string host = @"57.77.28.25";
             string username = "terra";
             string password = "NJ5$nm369V";
 
             string remoteDirectory = "/TerraMain/CFDI/";
-            string localDirectory = @"C:\Users\usuario\Downloads\modelxml\Nueva carpeta\";
+            // string localDirectory = @"D:\Download\New folder\";
 
             using (var sftp = new SftpClient(host, username, password))
             {
-                sftp.Connect();
-                var files = sftp.ListDirectory(remoteDirectory);
-
-                foreach (var file in files)
+                try
                 {
-                    string remoteFileName = file.Name;
-                    
-                    if ((!file.Name.StartsWith(".")) && (file.LastWriteTime.Date == DateTime.Today))
+                    sftp.Connect();
+                    var files = sftp.ListDirectory(remoteDirectory);
 
-                       // CallXMLFile(file);
+                    foreach (var file in files)
+                    {
+                        string remoteFileName = file.Name;
 
-                    //using (Stream file1 = File.OpenWrite(localDirectory + remoteFileName))
-                    //    {
-                    //        Console.WriteLine("paso a guardar file1");
-                    //sftp.DownloadFile(remoteDirectory + remoteFileName, file1);
-                     //        CallXMLFile(file1);
-                    //    }
+                        if (!file.Name.StartsWith(".") && file.Name.EndsWith(".xml"))
+                        {
+                            Console.WriteLine(remoteFileName);
+                            WriteToFile("Service save" + remoteFileName);
+                            using (XmlReader reader = XmlReader.Create(sftp.OpenRead(remoteDirectory + file.Name)))
+                            {
+                                SaveXMLFile(reader);
+                            }
+
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("An exception has been caught " + e.ToString());
+                    WriteToFile("An exception has been caught " + e.ToString());
                 }
 
             }
