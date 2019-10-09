@@ -33,7 +33,8 @@ namespace ServiceAppCFDI
             timer.Interval = 5000; //number in milisecinds
             timer.Enabled = true;
             //CallXMLFile();
-            GetXmlFiles();
+            //GetXmlFiles();
+            GetRoutes();
 
         }
 
@@ -60,7 +61,7 @@ namespace ServiceAppCFDI
             DataSet ds = new DataSet();
             ds.ReadXml(xmlreader);
             xmlreader.Close();
-            string storedProcedureName = "SaveXMLNotaDeCredito";
+            string storedProcedureName = "SaveXMLFactura";
             var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
             using (var sqlConn = new SqlConnection(connString))
             {
@@ -87,6 +88,8 @@ namespace ServiceAppCFDI
             string host = @"57.77.28.25";
             string username = "terra";
             string password = "NJ5$nm369V";
+
+
 
             string remoteDirectory = "/TerraMain/CFDI/";
             // string localDirectory = @"D:\Download\New folder\";
@@ -122,6 +125,41 @@ namespace ServiceAppCFDI
 
             }
         }
+
+        public List<proveedor> GetRoutes()
+        {
+            var listaRuta = new List<proveedor>();
+            var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
+
+            using (SqlConnection myConnection = new SqlConnection(connString))
+            {
+                string oString = "Select * from tbl_proveedor_comprobante";
+                SqlCommand oCmd = new SqlCommand(oString, myConnection);
+                myConnection.Open();
+                using (SqlDataReader oReader = oCmd.ExecuteReader())
+                {
+                  
+                    proveedor newProveedor = new proveedor();
+                    while (oReader.Read())
+                    {
+                        newProveedor.id = (int)oReader["id"];
+                        newProveedor.nombre_proveedor = oReader["nombre_proveedor"].ToString();
+                        newProveedor.ruta_fuente_comprobante = oReader["ruta_fuente_comprobante"].ToString();
+                        newProveedor.ruta_proceso_exitoso = oReader["ruta_proceso_exitoso"].ToString();
+                        newProveedor.ruta_proceso_fallido = oReader["ruta_proceso_fallido"].ToString();
+                        newProveedor.tipo_comprobante = (int)oReader["tipo_comprobante_id"];
+                      
+                        Console.WriteLine(newProveedor.ruta_fuente_comprobante);
+                        listaRuta.Add(newProveedor);
+                    }
+
+                    myConnection.Close();
+                }
+            }
+            return listaRuta;
+        }
+
+
         public void WriteToFile(string Message)
         {
             string path = AppDomain.CurrentDomain.BaseDirectory + "\\Logs";
