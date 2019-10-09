@@ -30,17 +30,15 @@ namespace ServiceAppCFDI
             WriteToFile("Service is started at " + DateTime.Now);
             Console.WriteLine("service...start");
             timer.Elapsed += new ElapsedEventHandler(OnElapsedTime);
-            timer.Interval = 5000; //number in milisecinds
+            timer.Interval = Convert.ToDouble(ConfigurationManager.AppSettings["timer"]); //number in milisecinds
             timer.Enabled = true;
-            //CallXMLFile();
-            //GetXmlFiles();
-            GetRoutes();
-
+            ProcessProviderRoutes();
         }
 
         protected override void OnStop()
         {
             WriteToFile("Service is stopped at " + DateTime.Now);
+            ProcessProviderRoutes();
             Console.WriteLine("service stop");
         }
 
@@ -50,18 +48,122 @@ namespace ServiceAppCFDI
             Console.WriteLine("windows service call every 5 seconds ");
 
         }
+        public void ProcessProviderRoutes()
+        {
+            var listaRuta = new List<proveedor>();
+            var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
 
-        public void SaveXMLFile(XmlReader xmlreader)
+            using (SqlConnection myConnection = new SqlConnection(connString))
+            {
+                string oString = "Select * from tbl_proveedor_comprobante";
+                SqlCommand oCmd = new SqlCommand(oString, myConnection);
+                myConnection.Open();
+                using (SqlDataReader oReader = oCmd.ExecuteReader())
+                {
+
+
+                    while (oReader.Read())
+                    {
+                        proveedor newProveedor = new proveedor();
+                        newProveedor.id = (int)oReader["id"];
+                        newProveedor.nombre_proveedor = oReader["nombre_proveedor"].ToString();
+                        newProveedor.ruta_fuente_comprobante = oReader["ruta_fuente_comprobante"].ToString();
+                        newProveedor.ruta_proceso_exitoso = oReader["ruta_proceso_exitoso"].ToString();
+                        newProveedor.ruta_proceso_fallido = oReader["ruta_proceso_fallido"].ToString();
+                        newProveedor.tipo_comprobante = (int)oReader["tipo_comprobante_id"];
+
+                        //Console.WriteLine(newProveedor.ruta_fuente_comprobante);
+                        listaRuta.Add(newProveedor);
+                    }
+
+                    myConnection.Close();
+                }
+            }
+
+            foreach (var prov in listaRuta)
+            {
+                Console.WriteLine(prov.ruta_fuente_comprobante);
+                //por cada proveedor se recorre el metodo para procesar xml
+                ProcessXmlFiles(prov.ruta_fuente_comprobante, prov.ruta_proceso_exitoso, prov.ruta_proceso_fallido, prov.tipo_comprobante);
+                
+
+            }
+
+
+        }
+
+
+
+        public void ProcessXmlFiles(string route = "", string routedexito = "", string routefallo = "", int tipoxml = 1)
+        {
+
+            string host = ConfigurationManager.AppSettings["host"];
+            string username = ConfigurationManager.AppSettings["username"];
+            string password = ConfigurationManager.AppSettings["password"];
+            string SPName; //name for stored procedure
+            if (tipoxml == 1)
+                SPName = ConfigurationManager.AppSettings["storedProcedure1"];
+            else
+                if (tipoxml == 2)
+                SPName = ConfigurationManager.AppSettings["storedProcedure2"];
+            else
+            if (tipoxml == 3)
+                SPName = ConfigurationManager.AppSettings["storedProcedure3"];
+            else
+
+                SPName = ConfigurationManager.AppSettings["storedProcedure4"];
+
+
+
+
+            using (var sftp = new SftpClient(host, username, password))
+            {
+                try
+                {
+                    sftp.Connect();
+                    var files = sftp.ListDirectory(route);
+                    int processed = 0;
+                   
+                    foreach (var file in files)
+                    {
+                        //var filecatch = file;
+
+                        string remoteFileName = file.Name;
+
+                        if (!file.Name.StartsWith(".") && file.Name.EndsWith(".xml"))
+                        {
+                            Console.WriteLine(remoteFileName);
+                            WriteToFile("Service save" + remoteFileName);
+                            using (XmlReader reader = XmlReader.Create(sftp.OpenRead(route + file.Name)))
+                            {
+                                SaveXMLFile(reader, SPName);
+
+                            }
+
+                            file.MoveTo(routedexito + remoteFileName);
+
+                        }
+
+                        if (++processed == Int32.Parse(ConfigurationManager.AppSettings["numberXML"])) break;
+                    }
+                    //sftp.Disconnect();
+                }
+                catch (Exception e)
+                {
+                    //filecatch.MoveTo(routedexito + remoteFileName);
+                    Console.WriteLine("An exception has been caught " + e.ToString());
+                    WriteToFile("An exception has been caught " + e.ToString());
+                }
+
+            }
+        }
+        public void SaveXMLFile(XmlReader xmlreader, string SPName = "")
         {
             Console.WriteLine("xml save");
-            //code to read local xml files
-            //string sourceFile = @"C:/Users/usuario/Downloads/modelxml/B-55238797_Ingresos_Nacional.xml";
-            //XmlTextReader xmlreader = new XmlTextReader(sourceFile);
-            //string xmlString = File.ReadAllText(sourceFile);
             DataSet ds = new DataSet();
             ds.ReadXml(xmlreader);
             xmlreader.Close();
-            string storedProcedureName = "SaveXMLFactura";
+            string storedProcedureName = SPName;
             var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
             using (var sqlConn = new SqlConnection(connString))
             {
@@ -69,7 +171,6 @@ namespace ServiceAppCFDI
                 using (var sqlCommand = new SqlCommand(storedProcedureName, sqlConn))
                 {
                     sqlCommand.CommandType = System.Data.CommandType.StoredProcedure;
-                    //sqlCommand.Parameters.Add(new SqlParameter("@cfdi", xmlString));
                     sqlCommand.Parameters.Add("@cfdi", SqlDbType.Xml).Value = ds.GetXml();
 
                     int cont = sqlCommand.ExecuteNonQuery();
@@ -82,82 +183,9 @@ namespace ServiceAppCFDI
 
         }
 
-        public void GetXmlFiles()
-        {
-            //Console.WriteLine("xml download");
-            string host = @"57.77.28.25";
-            string username = "terra";
-            string password = "NJ5$nm369V";
+       
 
-
-
-            string remoteDirectory = "/TerraMain/CFDI/";
-            // string localDirectory = @"D:\Download\New folder\";
-
-            using (var sftp = new SftpClient(host, username, password))
-            {
-                try
-                {
-                    sftp.Connect();
-                    var files = sftp.ListDirectory(remoteDirectory);
-
-                    foreach (var file in files)
-                    {
-                        string remoteFileName = file.Name;
-
-                        if (!file.Name.StartsWith(".") && file.Name.EndsWith(".xml"))
-                        {
-                            Console.WriteLine(remoteFileName);
-                            WriteToFile("Service save" + remoteFileName);
-                            using (XmlReader reader = XmlReader.Create(sftp.OpenRead(remoteDirectory + file.Name)))
-                            {
-                                SaveXMLFile(reader);
-                            }
-
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine("An exception has been caught " + e.ToString());
-                    WriteToFile("An exception has been caught " + e.ToString());
-                }
-
-            }
-        }
-
-        public List<proveedor> GetRoutes()
-        {
-            var listaRuta = new List<proveedor>();
-            var connString = ConfigurationManager.ConnectionStrings["db_cfdi"].ConnectionString;
-
-            using (SqlConnection myConnection = new SqlConnection(connString))
-            {
-                string oString = "Select * from tbl_proveedor_comprobante";
-                SqlCommand oCmd = new SqlCommand(oString, myConnection);
-                myConnection.Open();
-                using (SqlDataReader oReader = oCmd.ExecuteReader())
-                {
-                  
-                    proveedor newProveedor = new proveedor();
-                    while (oReader.Read())
-                    {
-                        newProveedor.id = (int)oReader["id"];
-                        newProveedor.nombre_proveedor = oReader["nombre_proveedor"].ToString();
-                        newProveedor.ruta_fuente_comprobante = oReader["ruta_fuente_comprobante"].ToString();
-                        newProveedor.ruta_proceso_exitoso = oReader["ruta_proceso_exitoso"].ToString();
-                        newProveedor.ruta_proceso_fallido = oReader["ruta_proceso_fallido"].ToString();
-                        newProveedor.tipo_comprobante = (int)oReader["tipo_comprobante_id"];
-                      
-                        Console.WriteLine(newProveedor.ruta_fuente_comprobante);
-                        listaRuta.Add(newProveedor);
-                    }
-
-                    myConnection.Close();
-                }
-            }
-            return listaRuta;
-        }
+        
 
 
         public void WriteToFile(string Message)
