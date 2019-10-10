@@ -38,14 +38,14 @@ namespace ServiceAppCFDI
         protected override void OnStop()
         {
             WriteToFile("Service is stopped at " + DateTime.Now);
-            ProcessProviderRoutes();
             Console.WriteLine("service stop");
         }
 
         private void OnElapsedTime(object source, ElapsedEventArgs e)
         {
             WriteToFile("Service is recall at " + DateTime.Now);
-            Console.WriteLine("windows service call every 5 seconds ");
+            Console.WriteLine("windows service recall...");
+            ProcessProviderRoutes();
 
         }
         public void ProcessProviderRoutes()
@@ -85,7 +85,7 @@ namespace ServiceAppCFDI
                 Console.WriteLine(prov.ruta_fuente_comprobante);
                 //por cada proveedor se recorre el metodo para procesar xml
                 ProcessXmlFiles(prov.ruta_fuente_comprobante, prov.ruta_proceso_exitoso, prov.ruta_proceso_fallido, prov.tipo_comprobante);
-                
+
 
             }
 
@@ -113,49 +113,68 @@ namespace ServiceAppCFDI
 
                 SPName = ConfigurationManager.AppSettings["storedProcedure4"];
 
-
-
-
-            using (var sftp = new SftpClient(host, username, password))
+            bool retry = false;
+            do
             {
-                try
+                bool retrying = retry;
+                retry = false;
+
+                using (var sftp = new SftpClient(host, username, password))
                 {
-                    sftp.Connect();
-                    var files = sftp.ListDirectory(route);
-                    int processed = 0;
-                   
-                    foreach (var file in files)
+
+                    try
                     {
-                        //var filecatch = file;
-
-                        string remoteFileName = file.Name;
-
-                        if (!file.Name.StartsWith(".") && file.Name.EndsWith(".xml"))
+                        sftp.Connect();
+                        var files = sftp.ListDirectory(route).Where(f => !f.IsDirectory).Take(int.Parse(ConfigurationManager.AppSettings["numberXML"]));
+                
+                        foreach (var file in files)
                         {
-                            Console.WriteLine(remoteFileName);
-                            WriteToFile("Service save" + remoteFileName);
-                            using (XmlReader reader = XmlReader.Create(sftp.OpenRead(route + file.Name)))
+                            
+
+                            string remoteFileName = file.Name;
+                            bool fileExist = CheckIfRemoteFileExists(sftp, routedexito, remoteFileName);
+
+                            if (!file.Name.StartsWith(".") && file.Name.EndsWith(".xml") && !fileExist && !retrying)
                             {
-                                SaveXMLFile(reader, SPName);
+                                Console.WriteLine(remoteFileName);
+                                WriteToFile("Service save" + remoteFileName);
+                                using (XmlReader reader = XmlReader.Create(sftp.OpenRead(route + file.Name)))
+                                {
+                                    SaveXMLFile(reader, SPName);
+                                }
+
+                                file.MoveTo(routedexito + remoteFileName);
 
                             }
+                            else
+                                if (retrying || fileExist)//si se reintento la conexion o el nombre del archivo es duplicado
+                                 {
+                                      file.MoveTo(routefallo + remoteFileName);
+                                 }
 
-                            file.MoveTo(routedexito + remoteFileName);
-
+                            
                         }
-
-                        if (++processed == Int32.Parse(ConfigurationManager.AppSettings["numberXML"])) break;
+                        //sftp.Disconnect();
                     }
-                    //sftp.Disconnect();
-                }
-                catch (Exception e)
-                {
-                    //filecatch.MoveTo(routedexito + remoteFileName);
-                    Console.WriteLine("An exception has been caught " + e.ToString());
-                    WriteToFile("An exception has been caught " + e.ToString());
-                }
+                    catch (Exception e)
+                    {
 
+                        retry = true;
+                        //filecatch.MoveTo(routefallo);
+                        Console.WriteLine("An exception has been caught " + e.ToString());
+                        string error = WriteToFile("An 1 exception has been caught " + e.ToString());
+                        Console.WriteLine(error);
+                        //using (var fileStream = new FileStream(error, FileMode.Open))
+                        //{
+                        //    //Console.WriteLine("Uploading {0} ({1:N0} bytes)", uploadfile, fileStream.Length);
+                        //    sftp.BufferSize = 4 * 1024; // bypass Payload error large files
+                        //    sftp.UploadFile(fileStream, error);
+                        //}
+                    }
+
+                }
             }
+            while (retry);
         }
         public void SaveXMLFile(XmlReader xmlreader, string SPName = "")
         {
@@ -183,12 +202,21 @@ namespace ServiceAppCFDI
 
         }
 
-       
 
-        
+        public bool CheckIfRemoteFileExists(SftpClient sftpClient, string remoteFolderName, string remotefileName)
+        {
+            bool isFileExists = sftpClient
+                                .ListDirectory(remoteFolderName)
+                                .Any(
+                                        f => f.IsRegularFile &&
+                                        f.Name.ToLower() == remotefileName.ToLower()
+                                    );
+            return isFileExists;
+        }
 
 
-        public void WriteToFile(string Message)
+
+        public string WriteToFile(string Message)
         {
             string path = AppDomain.CurrentDomain.BaseDirectory + "\\Logs";
             if (!Directory.Exists(path))
@@ -211,6 +239,7 @@ namespace ServiceAppCFDI
                     sw.WriteLine(Message);
                 }
             }
+            return filepath;
         }
     }
 
